@@ -62,7 +62,10 @@ python -m venv .venv
 
 1. Download `OllamaSetup.exe` from ollama.com and install it to D: with `OllamaSetup.exe /DIR="D:\Ollama"`.
 2. Store models on D: by running `setx OLLAMA_MODELS D:\ollama-models`, then quit and restart Ollama from the tray.
-3. Pull the model with `ollama pull gemma3:4b`. That's 3.3 GB, and it fits the Quadro T1000's 4 GB.
+3. Pull the model with `ollama pull gemma3:4b`. That's 3.3 GB. On the Quadro T1000 (4 GB) it runs about half on the
+   GPU: waking a rock takes ~1.5-2 min, topping up 3 chapters ~40 s.
+4. In Ollama's tray Settings, turn off automatic updates if you can: the updater downloads a 1.5 GB installer to
+   `C:\Users\<you>\AppData\Local\Ollama\updates_v2` regardless of where Ollama is installed.
 
 Want a smarter rock? `ollama pull gemma3:12b` and `set GEMMA_MODEL=gemma3:12b`. It runs mostly on CPU (32 GB RAM is
 fine), so it takes minutes per rock, which is fine for an overnight job.
@@ -74,6 +77,16 @@ fine), so it takes minutes per rock, which is fine for an overnight job.
 ```
 
 Edit `server/prompts.py` until it's genuinely funny. Outputs are saved in `data/prompt-trials/`.
+
+What we learned prompting `gemma3:4b`:
+
+- **It copies examples.** Any sample line in the prompt shows up almost word for word in every rock, so the style
+  rules describe the voice instead of quoting it.
+- **Make it look before it talks.** The schema asks for `seen` (what's really in the photo) first. Ollama decodes
+  fields in schema order, so the chapters build on what it just saw. It still invents the odd plastic bottle.
+- **It misfires, so answers are checked.** `prompts.wake_problems` and `continue_problems` reject leaked JSON
+  (`], 1,`), repetition loops, chapters that never say "you" (third-person narration), and lines that are too long.
+  `gemma.ask_json` retries up to 3 times, and `max_tokens` stops a runaway answer.
 
 ## Phone setup (Android + Chrome)
 

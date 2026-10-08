@@ -38,7 +38,8 @@ def speed_for(rock_id: str) -> float:
 
 
 def clean_for_speech(text: str) -> str:
-    text = re.sub(r"\*[^*]*\*|\[[^\]]*\]", " ", text)  # stage directions: *sighs*, [pause]
+    text = re.sub(r"\*(\w+)\*", r"\1", text)  # *emphasis* on one word: keep the word
+    text = re.sub(r"\*[^*]*\*|\[[^\]]*\]", " ", text)  # stage directions: *sighs heavily*, [pause]
     text = re.sub(r"[*_#`~{}<>]", "", text)
     text = re.sub(r"[\U0001F000-\U0001FFFF☀-➿]", "", text)  # emoji
     return re.sub(r"\s+", " ", text).strip().strip('"')

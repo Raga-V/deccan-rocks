@@ -24,6 +24,7 @@ ap.add_argument("--spot")
 ap.add_argument("--human")
 ap.add_argument("--speak", action="store_true", help="also render chapter 1 with each installed Piper voice")
 args = ap.parse_args()
+sys.stdout.reconfigure(encoding="utf-8")  # Gemma likes curly quotes; the Windows console doesn't
 
 out_dir = DATA_DIR / "prompt-trials" / dt.datetime.now().strftime("%Y%m%d-%H%M%S")
 out_dir.mkdir(parents=True, exist_ok=True)
@@ -32,9 +33,15 @@ paths = [Path(p) for pat in args.photos for p in (glob.glob(pat) or [pat])]
 for path in paths:
     print(f"\n=== {path.name} ({GEMMA_MODEL}) ===")
     t0 = time.time()
-    data = gemma.ask_json(prompts.wake_prompt(args.spot, args.human, None), prompts.WAKE_SCHEMA, image=path)
+    try:
+        data = gemma.ask_json(prompts.wake_prompt(args.spot, args.human, None), prompts.WAKE_SCHEMA, image=path,
+                              check=prompts.wake_problems)
+    except gemma.GemmaBadOutput as e:
+        print(f"[{time.time() - t0:.0f}s] gave up: {e}")
+        continue
     print(f"[{time.time() - t0:.0f}s]")
     print(f"{data['name']}: {data['temperament']}")
+    print(f"  seen:        {'; '.join(data['seen'])}")
     print(f"  grudge:      {data['grudge']}")
     print(f"  secret like: {data['secret_like']}")
     print(f"  quirks:      {'; '.join(data['quirks'])}")

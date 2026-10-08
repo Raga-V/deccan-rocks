@@ -63,6 +63,7 @@ def _mock_wake(rock) -> dict:
     rnd = random.Random(rock["id"])
     name = rnd.choice(["Gundu", "Old Sitamma", "Pebble Rao", "Big Lakshmi", "Bandaraju"])
     return {
+        "seen": ["a balanced boulder", "a hazy sky", "a crane"],
         "name": name, "temperament": "suspicious, sleepy", "quirks": ["counts pigeons", "hates drills"],
         "grudge": "the new tower that blocks the sunset", "secret_like": "the smell of Irani chai",
         "neighbour": "Venkat", "backstory": f"{name} has been sitting here since before the continents moved. (mock)",
@@ -93,6 +94,7 @@ def wake_rock(rock_id: str, mock: bool):
             prompts.wake_prompt(rock["spot"], human, _when(rock["adopted_at"]), taken),
             prompts.WAKE_SCHEMA,
             image=MEDIA_DIR / rock["photo_path"],
+            check=prompts.wake_problems,
         )
     log(f"  {data['name']} woke up in {time.time() - t0:.0f}s: {data['temperament']}")
 
@@ -103,7 +105,7 @@ def wake_rock(rock_id: str, mock: bool):
     rej_audio = render(rock, rejection, "rejection")
     nag_audio = [render(rock, text, f"nag-{tier}") for tier, _, text in nags]
 
-    personality = {k: data[k] for k in ("temperament", "quirks", "grudge", "secret_like", "neighbour")}
+    personality = {k: data[k] for k in ("seen", "temperament", "quirks", "grudge", "secret_like", "neighbour")}
     ts = now()
     with db.tx() as c:
         c.execute(
@@ -154,9 +156,11 @@ def top_up_rock(rock_id: str, mock: bool):
     else:
         data = gemma.ask_json(
             prompts.continue_prompt(rock["name"], dict(personality, backstory=rock["backstory"]),
-                                    [ch["text"] for ch in chapters], notes, first, CHAPTER_BATCH),
-            prompts.CONTINUE_SCHEMA,
+                                    [ch["text"] for ch in chapters], notes, CHAPTER_BATCH),
+            prompts.continue_schema(CHAPTER_BATCH),
             image=MEDIA_DIR / rock["photo_path"],
+            check=prompts.continue_problems(CHAPTER_BATCH),
+            max_tokens=700,  # 3 short chapters are ~300 tokens
         )
     new = [(first + i, t, render(rock, t, f"ch{first + i}")) for i, t in enumerate(data["chapters"][:CHAPTER_BATCH])]
     ts = now()

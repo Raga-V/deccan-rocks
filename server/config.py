@@ -16,6 +16,8 @@ CERTS_DIR = ROOT / "certs"
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
 GEMMA_MODEL = os.getenv("GEMMA_MODEL", "gemma3:4b")
 OLLAMA_TIMEOUT_S = float(os.getenv("OLLAMA_TIMEOUT_S", "900"))  # 12B on CPU is slow; rocks are patient
+# Smaller context = more of the model fits on a 4 GB GPU. Prompts + 20 chapters of history stay well under 4k.
+OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
 
 # Generate this many chapters at a time, and top up when fewer than CHAPTER_LOW_WATER remain locked.
 CHAPTER_BATCH = 3
