@@ -16,7 +16,7 @@ export function getFix({ timeoutMs = 15000, goodEnoughM = 12 } = {}) {
         if (!best || fix.accuracy < best.accuracy) best = fix;
         if (best.accuracy <= goodEnoughM) done();
       },
-      () => {}, // errors: keep waiting until timeout; best may stay null
+      (err) => { if (err.code === err.PERMISSION_DENIED) done(); }, // other errors: keep waiting until timeout
       { enableHighAccuracy: true, maximumAge: 5000, timeout: timeoutMs },
     );
     const timer = setTimeout(done, timeoutMs);

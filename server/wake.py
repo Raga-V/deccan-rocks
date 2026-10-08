@@ -83,13 +83,14 @@ def wake_rock(rock_id: str, mock: bool):
         rock = c.execute("SELECT * FROM rocks WHERE id=?", (rock_id,)).fetchone()
         human = db.get_setting(c, "human_name")
         voice_id = pick_voice(c, rock_id)
+        taken = [r["name"] for r in c.execute("SELECT name FROM rocks WHERE name IS NOT NULL AND id != ?", (rock_id,))]
     log(f"waking {rock_id[:8]} ({rock['spot'] or 'no spot label'}) with {'mock' if mock else GEMMA_MODEL}...")
     t0 = time.time()
     if mock:
         data = _mock_wake(rock)
     else:
         data = gemma.ask_json(
-            prompts.wake_prompt(rock["spot"], human, _when(rock["adopted_at"])),
+            prompts.wake_prompt(rock["spot"], human, _when(rock["adopted_at"]), taken),
             prompts.WAKE_SCHEMA,
             image=MEDIA_DIR / rock["photo_path"],
         )

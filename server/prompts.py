@@ -94,7 +94,7 @@ CONTINUE_SCHEMA = {
 }
 
 
-def wake_prompt(spot: str | None, human: str | None, adopted_at: str | None) -> str:
+def wake_prompt(spot: str | None, human: str | None, adopted_at: str | None, taken: list[str] = ()) -> str:
     bits = []
     if spot:
         bits.append(f"You sit at: {spot}.")
@@ -102,6 +102,9 @@ def wake_prompt(spot: str | None, human: str | None, adopted_at: str | None) -> 
         bits.append(f"The human's name is {human}.")
     if adopted_at:
         bits.append(f"They adopted you at {adopted_at} (local time).")
+    if taken:
+        bits.append(f"The human has already adopted other rocks called {', '.join(taken)}. "
+                    "You are not them; pick a different name and a different neighbour.")
     return WAKE_PROMPT.format(context="\n".join(bits), style=STYLE_RULES)
 
 

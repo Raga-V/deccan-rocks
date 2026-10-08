@@ -348,7 +348,8 @@ views.adopt = async () => {
       };
       await store.put('rocks', rock);
       status('Adopted. It is asleep 💤. It will wake up tonight when you sync at home.');
-      setTimeout(() => show('rock', rock.id), 1200);
+      const here = current;
+      setTimeout(() => current === here && show('rock', rock.id), 1200);  // unless they've moved on
     } catch (e) {
       status(`Couldn't adopt: ${e.message}. Is the vision model downloaded? (Home tab)`);
       $('#save').disabled = false;
