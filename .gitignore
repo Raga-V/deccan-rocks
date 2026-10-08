@@ -1,0 +1,10 @@
+# local data: your rocks, photos, GPS, voices
+data/
+certs/
+# big downloaded models (scripts/fetch_assets.py)
+vendor/
+models/
+# python
+.venv/
+__pycache__/
+*.pyc
