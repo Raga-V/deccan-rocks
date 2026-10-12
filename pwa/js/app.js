@@ -189,8 +189,10 @@ async function cacheUrls(urls) {
 async function sync() {
   const [allRocks, visits, samples, walks] = await Promise.all(['rocks', 'visits', 'samples', 'walks'].map(store.all));
   const unsent = (xs) => xs.filter((x) => !x.synced);
+  const released = (await store.getMeta('released')) || [];
   const body = {
     human_name: settings.human_name || null,
+    released,
     rocks: await Promise.all(unsent(allRocks).map(async (r) => ({
       id: r.id, photo: await blobToDataUrl(r.photo), embeddings: r.embeddings, lat: r.lat, lng: r.lng,
       gps_accuracy_m: r.gps_accuracy_m, adopted_at: r.adopted_at, spot: r.spot,
@@ -211,8 +213,11 @@ async function sync() {
     const acked = new Set(data.acked[name]);
     for (const x of xs) if (!x.synced && acked.has(x.id)) await store.put(name, { ...x, synced: true });
   }
+  const stillReleased = released.filter((id) => !data.acked.released.includes(id));
+  await store.setMeta('released', stillReleased);
   const local = new Map(allRocks.map((r) => [r.id, r]));
   for (const s of data.rocks) {
+    if (stillReleased.includes(s.id)) continue;
     const l = local.get(s.id) || { id: s.id, unlocked: [] };
     const unlocked = new Set([...(l.unlocked || []), ...s.chapters.filter((c) => c.unlocked_at).map((c) => c.number)]);
     const last = [l.last_visit_at, s.last_visit_at].filter(Boolean).sort().pop() || null;
@@ -291,7 +296,7 @@ views.rock = async (id) => {
     <img class="hero" src="${esc(photoSrc(r))}" alt="">
     <section class="panel">
       <p class="muted">${esc(r.spot || '')} · adopted ${fmtDate(r.adopted_at)}${r.voice ? ` · voice ${esc(r.voice)}` : ''}</p>
-      ${r.status !== 'awake' ? `<p>💤 Still asleep. Rocks take a night to think. Sync at home, then wake the rocks.</p>` : `
+      ${r.status !== 'awake' ? `<p>💤 Still asleep. Rocks take a night to think. Sync at home tonight; the laptop wakes it overnight.</p>` : `
         <p><b>Temperament:</b> ${esc(p?.temperament)}</p>
         <p><b>Grudge:</b> ${esc(p?.grudge)}</p>
         <p><b>Secretly likes:</b> ${esc(p?.secret_like)}</p>
@@ -303,7 +308,14 @@ views.rock = async (id) => {
     ${(r.chapters || []).map((c) => unlocked.has(c.number)
       ? `<div class="panel chapter"><b>${c.number}.</b> ${esc(c.text)} ${c.audio_url ? `<button class="btn small" data-play="${esc(c.audio_url)}">▶</button>` : ''}</div>`
       : `<div class="panel chapter locked">🔒 Chapter ${c.number}: visit to unlock</div>`).join('') || '<p class="muted">None yet.</p>'}
-    ${r.rejection ? `<p><button class="btn ghost" data-play="${esc(r.rejection.audio_url || '')}">▶ What it says to imposters</button></p>` : ''}`;
+    ${r.rejection ? `<p><button class="btn ghost" data-play="${esc(r.rejection.audio_url || '')}">▶ What it says to imposters</button></p>` : ''}
+    <p><button class="btn ghost danger" id="release">Release this rock</button></p>`;
+  $('#release').onclick = async () => {
+    if (!confirm(`Release ${rockName(r)}? Its chapters and voice go too. It will not notice for a few million years.`)) return;
+    await store.del('rocks', r.id);
+    await store.setMeta('released', [...((await store.getMeta('released')) || []), r.id]);
+    show('rocks');
+  };
 };
 
 views.adopt = async () => {
@@ -451,12 +463,13 @@ views.home = async () => {
   const walk = await store.getMeta('walk');
   const walks = (await store.all('walks')).sort((a, b) => b.started_at.localeCompare(a.started_at));
   const samples = await store.all('samples');
-  const pending = (await store.all('visits')).filter((v) => !v.synced).length + rocks.filter((r) => !r.synced).length;
+  const pending = (await store.all('visits')).filter((v) => !v.synced).length + rocks.filter((r) => !r.synced).length
+    + ((await store.getMeta('released')) || []).length;
   const ready = await offlineReady();
   main.innerHTML = `
     <section class="panel">
       <h2>${online ? '🏠 Laptop reachable' : '⛰️ In the field'}</h2>
-      ${online ? `<p class="muted small">Gemma (${esc(online.model)}): ${online.gemma ? '✓' : '✗ not pulled'} · voices: ${online.voices.length}</p>` : '<p class="muted small">Everything works offline. Sync when you are back on home Wi-Fi.</p>'}
+      ${online ? `<p class="muted small">Gemma (${esc(online.model)}): ${online.gemma ? '✓' : '✗ not pulled'} · voices: ${online.voices.length}${online.nightly_wake ? ` · wakes rocks nightly at ${esc(online.nightly_wake)}` : ''}</p>` : '<p class="muted small">Everything works offline. Sync when you are back on home Wi-Fi.</p>'}
       <p>${pending} thing${pending === 1 ? '' : 's'} waiting to sync.</p>
       <button class="btn primary" id="sync" ${online ? '' : 'disabled'}>⇅ Sync</button>
       <button class="btn" id="wake" ${online ? '' : 'disabled'}>🌙 Wake the rocks</button>

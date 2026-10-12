@@ -95,3 +95,5 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   position: absolute; top: 4px; left: 56%; font-style: normal; font-size: 11px; min-width: 18px; padding: 1px 5px;
   border-radius: 9px; background: var(--bad); color: white;
 }
+
+.btn.danger { color: #e07a6a; border-color: #e07a6a55; }

@@ -23,6 +23,9 @@ OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
 CHAPTER_BATCH = 3
 CHAPTER_LOW_WATER = 2
 
+# The overnight wake runs by itself at this local time while the server is up ("off" to disable).
+NIGHTLY_WAKE = os.getenv("NIGHTLY_WAKE", "02:00")
+
 # Guilt-trip lines, pre-generated at wake time so the phone can show them offline.
 # (days without a visit, tier name). Keep in sync with NAG_TIERS in pwa/app.js.
 NAG_TIERS = [(3, "mild"), (7, "sulky"), (14, "dramatic")]

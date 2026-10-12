@@ -30,5 +30,6 @@ async function run(store, mode, fn) {
 export const all = (store) => run(store, 'readonly', (s) => s.getAll());
 export const get = (store, id) => run(store, 'readonly', (s) => s.get(id));
 export const put = (store, value) => run(store, 'readwrite', (s) => s.put(value));
+export const del = (store, id) => run(store, 'readwrite', (s) => s.delete(id));
 export const getMeta = (key) => run('meta', 'readonly', (s) => s.get(key));
 export const setMeta = (key, value) => run('meta', 'readwrite', (s) => s.put(value, key));

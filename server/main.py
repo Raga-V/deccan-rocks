@@ -2,7 +2,10 @@
 import base64
 import datetime as dt
 import json
+import shutil
 import threading
+import time
+from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException
@@ -11,12 +14,38 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StringConstraints
 
 from . import db, gemma, voice, wake
-from .config import CERTS_DIR, GEMMA_MODEL, MEDIA_DIR, PWA_DIR, VENDOR_DIR
+from .config import CERTS_DIR, GEMMA_MODEL, MEDIA_DIR, NIGHTLY_WAKE, PWA_DIR, VENDOR_DIR
 
 Id = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9-]{8,64}$")]  # ids become folder names
 MAX_EMBEDDINGS = 8  # adoption photo + the most recent accepted visits
 
-app = FastAPI(title="Deccan Rocks")
+
+
+def next_nightly_wake() -> dt.datetime | None:
+    if NIGHTLY_WAKE.lower() == "off":
+        return None
+    h, m = map(int, NIGHTLY_WAKE.split(":"))
+    now = dt.datetime.now()
+    at = now.replace(hour=h, minute=m, second=0, microsecond=0)
+    return at if at > now else at + dt.timedelta(days=1)
+
+
+def nightly_loop():
+    """Rocks take a night to think: wake them while the human sleeps (if the laptop is on)."""
+    while (at := next_nightly_wake()) is not None:
+        while (left := (at - dt.datetime.now()).total_seconds()) > 0:
+            time.sleep(min(left, 60))  # short naps, so a laptop resuming from sleep doesn't overshoot by hours
+        wake.log(f"nightly wake ({NIGHTLY_WAKE})")
+        wake.run()
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    threading.Thread(target=nightly_loop, daemon=True, name="nightly-wake").start()
+    yield
+
+
+app = FastAPI(title="Deccan Rocks", lifespan=lifespan)
 db.init()
 
 
@@ -68,6 +97,7 @@ class SyncIn(BaseModel):
     samples: list[SampleIn] = Field(default_factory=list)
     walks: list[WalkIn] = Field(default_factory=list)
     human_name: str | None = None
+    released: list[Id] = Field(default_factory=list)  # rocks the human let go of
 
 
 # ---------------------------------------------------------------- helpers
@@ -122,6 +152,7 @@ def health():
         "gemma": gemma.available(), "model": GEMMA_MODEL,
         "voices": voice.installed_voices() if voice.PiperVoice else [],
         "waking": wake.status["running"],
+        "nightly_wake": NIGHTLY_WAKE if next_nightly_wake() else None,
     }
 
 
@@ -132,7 +163,16 @@ def sync(body: SyncIn):
         if body.human_name:
             db.set_setting(c, "human_name", body.human_name.strip()[:40])
 
+        for rid in body.released:
+            c.execute("UPDATE visits SET rock_id=NULL WHERE rock_id=?", (rid,))
+            for table in ("chapters", "lines"):
+                c.execute(f"DELETE FROM {table} WHERE rock_id=?", (rid,))
+            c.execute("DELETE FROM rocks WHERE id=?", (rid,))
+            shutil.rmtree(MEDIA_DIR / rid, ignore_errors=True)
+
         for r in body.rocks:
+            if r.id in body.released:
+                continue
             if c.execute("SELECT 1 FROM rocks WHERE id=?", (r.id,)).fetchone():
                 continue  # already have it; re-sent because the phone missed our ack
             photo = save_data_url(r.photo, f"{r.id}/adopted.jpg")
@@ -179,6 +219,7 @@ def sync(body: SyncIn):
         "acked": {
             "rocks": [r.id for r in body.rocks], "visits": [v.id for v in body.visits],
             "samples": [s.id for s in body.samples], "walks": [w.id for w in body.walks],
+            "released": body.released,
         },
     }
 

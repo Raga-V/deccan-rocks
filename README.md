@@ -120,10 +120,15 @@ the app works with Wi-Fi and data switched off.
 ## The daily loop
 
 1. **Field (offline):** Rocks → *Adopt*. Start a walk on the Home tab. Use *Visit* to photograph a rock. The best CLIP match within the GPS radius has to clear the threshold. If it does, the next chapter plays. If it doesn't, the rock that *should* be there objects.
-2. **Home:** Home → *Wake the rocks* syncs first, then runs Gemma and Piper on the laptop and syncs again. You can also run `.venv\Scripts\python -m server.wake` on the laptop, or add `--mock` to test the whole loop without Gemma.
+2. **Home:** Home → *Sync*. Leave `run.py` running and the laptop awake: at 02:00 the server wakes new rocks and
+   writes more chapters by itself (set `NIGHTLY_WAKE=06:30` to change the time, or `NIGHTLY_WAKE=off`). Sync again in
+   the morning to pick up their voices. Can't wait? Home → *Wake the rocks* does it now, or run
+   `.venv\Scripts\python -m server.wake` on the laptop (add `--mock` to test the loop without Gemma).
 3. **Calibrate:** Home → *Calibration photo* records the similarity to every rock along with which rock it really was. At home, run `.venv\Scripts\python scripts\calibration.py` to get the suggested threshold, the confusable pairs, the GPS drift, and screen-on seconds per walk.
 
 To re-roll a rock's personality while you're tuning the prompt, run `python -m server.wake --rewake <id-prefix>`.
+Adopted the wrong rock? Open it and tap *Release this rock*. The laptop deletes it, with its photos and voices, on the
+next sync.
 
 ## What's actually local
 
