@@ -26,6 +26,13 @@ scheme = "https" if https else "http"
 print(f"\n  Laptop: {scheme}://localhost:{port}\n  Phone:  {scheme}://{ip}:{port}   (same Wi-Fi)\n")
 if not https:
     print("  No certs: the phone will block camera/GPS/offline on plain HTTP. See README > Phone setup.\n")
+else:
+    import ipaddress
+    from cryptography import x509
+    sans = x509.load_pem_x509_certificate(cert.read_bytes()).extensions.get_extension_for_class(x509.SubjectAlternativeName)
+    if ipaddress.ip_address(ip) not in sans.value.get_values_for_type(x509.IPAddress):
+        print(f"  !! The cert doesn't cover {ip} (new network?), so the phone will refuse to connect.\n"
+              f"  !! Fix: python scripts/make_cert.py {ip}   (keeps your CA), then restart run.py.\n")
 
 uvicorn.run(
     "server.main:app", host="0.0.0.0", port=port, reload=args.reload,
