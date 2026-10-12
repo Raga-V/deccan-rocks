@@ -23,6 +23,9 @@ OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
 CHAPTER_BATCH = 3
 CHAPTER_LOW_WATER = 2
 
+# Canned rock text instead of Gemma, for demos and testing the phone flow fast.
+MOCK_BRAIN = os.getenv("ROCKS_MOCK_BRAIN") == "1"
+
 # The overnight wake runs by itself at this local time while the server is up ("off" to disable).
 NIGHTLY_WAKE = os.getenv("NIGHTLY_WAKE", "02:00")
 

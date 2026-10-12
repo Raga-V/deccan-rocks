@@ -97,3 +97,8 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 }
 
 .btn.danger { color: #e07a6a; border-color: #e07a6a55; }
+
+#banner { position: sticky; top: 0; z-index: 5; padding: 8px 16px; font-size: 14px; background: #3a3140; color: var(--ink); }
+#toast { position: fixed; left: 16px; right: 16px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 20;
+  padding: 14px 16px; border: 0; border-radius: 14px; text-align: left; font: inherit;
+  background: var(--accent); color: #2a1a0c; box-shadow: 0 8px 30px #0008; }

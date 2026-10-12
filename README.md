@@ -14,8 +14,9 @@ laptop at home. No cloud API is involved, and GPS and photos never leave your ph
 | GPS check: within ~40 m of the adoption spot | Gemma writes the next 3 chapters, a rejection line and guilt-trip nags |
 | Plays the next chapter's voice line, cached on the phone | Piper TTS gives every rock its own voice |
 
-A rock you adopt today is **asleep 💤**. Tonight, on home Wi-Fi, you sync and it wakes up. It takes a night to think,
-which is reasonable for something older than multicellular life.
+A rock you adopt is **asleep 💤**. As soon as your phone can reach the laptop (home Wi-Fi, or the laptop on your
+phone's hotspot), the app syncs by itself and the laptop wakes the rock: a couple of minutes later it has a name, a
+grudge and a voice. No internet is involved, only the laptop.
 
 ```
 PHONE (PWA, offline)                      LAPTOP (home, local)
@@ -120,10 +121,12 @@ the app works with Wi-Fi and data switched off.
 ## The daily loop
 
 1. **Field (offline):** Rocks → *Adopt*. Start a walk on the Home tab. Use *Visit* to photograph a rock. The best CLIP match within the GPS radius has to clear the threshold. If it does, the next chapter plays. If it doesn't, the rock that *should* be there objects.
-2. **Home:** Home → *Sync*. Leave `run.py` running and the laptop awake: at 02:00 the server wakes new rocks and
-   writes more chapters by itself (set `NIGHTLY_WAKE=06:30` to change the time, or `NIGHTLY_WAKE=off`). Sync again in
-   the morning to pick up their voices. Can't wait? Home → *Wake the rocks* does it now, or run
-   `.venv\Scripts\python -m server.wake` on the laptop (add `--mock` to test the loop without Gemma).
+2. **Connected:** keep `run.py` running. Whenever the app is open and can reach the laptop it syncs every 20 s; any
+   sync that brings a new rock, or leaves one short of chapters, starts Gemma on the laptop right away. The app shows
+   "waking up…", then "Kiran woke up" and caches the voices for offline. A rock Gemma fails on waits 30 min before
+   the next automatic try, and a catch-up run still happens at 02:00 (`NIGHTLY_WAKE=06:30` or `off`).
+   Manual options: Home → *Wake the rocks*, or `.venv\Scripts\python -m server.wake` (`--mock` without Gemma).
+   For a quick demo without Gemma, start the server with `ROCKS_MOCK_BRAIN=1`.
 3. **Calibrate:** Home → *Calibration photo* records the similarity to every rock along with which rock it really was. At home, run `.venv\Scripts\python scripts\calibration.py` to get the suggested threshold, the confusable pairs, the GPS drift, and screen-on seconds per walk.
 
 To re-roll a rock's personality while you're tuning the prompt, run `python -m server.wake --rewake <id-prefix>`.

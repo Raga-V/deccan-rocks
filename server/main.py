@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StringConstraints
 
 from . import db, gemma, voice, wake
-from .config import CERTS_DIR, GEMMA_MODEL, MEDIA_DIR, NIGHTLY_WAKE, PWA_DIR, VENDOR_DIR
+from .config import CERTS_DIR, GEMMA_MODEL, MEDIA_DIR, MOCK_BRAIN, NIGHTLY_WAKE, PWA_DIR, VENDOR_DIR
 
 Id = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9-]{8,64}$")]  # ids become folder names
 MAX_EMBEDDINGS = 8  # adoption photo + the most recent accepted visits
@@ -213,7 +213,11 @@ def sync(body: SyncIn):
 
         rocks = [rock_out(c, r) for r in c.execute("SELECT * FROM rocks ORDER BY adopted_at").fetchall()]
 
+    # Rocks talk as soon as the phone can reach the laptop: start thinking right after the sync that needs it.
+    if not wake.status["running"] and wake.has_work() and (MOCK_BRAIN or gemma.available()):
+        wake.start()
     return {
+        "waking": wake.status["running"],
         "server_time": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
         "rocks": rocks,
         "acked": {
@@ -232,9 +236,8 @@ def list_rocks():
 
 @app.post("/api/wake")
 def start_wake(mock: bool = False):
-    if wake.status["running"]:
+    if not wake.start(mock):
         return {"started": False, "status": wake.status}
-    threading.Thread(target=wake.run, kwargs={"mock": mock}, daemon=True).start()
     return {"started": True}
 
 

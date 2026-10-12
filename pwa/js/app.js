@@ -228,7 +228,69 @@ async function sync() {
   const cached = await cacheUrls(data.rocks.flatMap((r) => [
     r.photo_url, r.rejection?.audio_url, ...r.chapters.map((c) => c.audio_url), ...r.nags.map((n) => n.audio_url),
   ]));
-  return { sent: body.rocks.length + body.visits.length, rocks: data.rocks.length, cached };
+  return { sent: body.rocks.length + body.visits.length, rocks: data.rocks.length, cached, waking: data.waking };
+}
+
+// ------------------------------------------------------------------ auto-sync: rocks talk as soon as the laptop is reachable
+
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+let syncing = null;
+const syncOnce = () => (syncing ??= sync().finally(() => (syncing = null)));  // never two syncs at once
+const fingerprint = () => rocks.map((r) => `${r.id}:${r.status}:${r.chapters?.length}:${r.unlocked?.length}`).join();
+let watchingWake = false;
+
+function banner(text) {
+  const b = $('#banner');
+  b.hidden = !text;
+  b.textContent = text || '';
+}
+
+function toast(text, onTap) {
+  const t = $('#toast');
+  t.textContent = text;
+  t.hidden = false;
+  t.onclick = () => { t.hidden = true; onTap?.(); };
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => (t.hidden = true), 12000);
+}
+
+function afterSync(asleep, before) {
+  const woke = rocks.filter((r) => asleep.has(r.id) && r.status === 'awake');
+  if (woke.length === 1) toast(`🪨 ${woke[0].name} woke up. Go visit to hear chapter 1.`, () => show('rock', woke[0].id));
+  else if (woke.length) toast(`🪨 ${woke.map((r) => r.name).join(', ')} woke up. Go visit them.`, () => show('rocks'));
+  // Re-render read-only views if something changed; never interrupt adopting, visiting or calibrating.
+  if (fingerprint() !== before && ['rocks', 'rock', 'inbox'].includes(current.view)) show(current.view, current.arg);
+}
+
+async function watchWake(asleep, before) {
+  if (watchingWake) return;
+  watchingWake = true;
+  try {
+    for (;;) {
+      const n = rocks.filter((r) => r.status !== 'awake').length;
+      banner(n ? `🌙 ${n} rock${n > 1 ? 's are' : ' is'} waking up on your laptop (about 2 min each)…`
+        : '🌙 Your rocks are thinking up new chapters…');
+      await pause(4000);
+      const s = await fetch('/api/wake', { cache: 'no-store' }).then((r) => r.json()).catch(() => null);
+      if (!s?.running) break;  // done, or we walked out of range (the laptop carries on without us)
+    }
+    await syncOnce().catch(() => {});
+  } finally {
+    watchingWake = false;
+    banner(null);
+  }
+  afterSync(asleep, before);
+}
+
+async function autoSync() {
+  if (document.visibilityState !== 'visible' || !(await checkOnline())) return;
+  await loadState();  // may run right after an adoption, before any view reloaded the list
+  const asleep = new Set(rocks.filter((r) => r.status !== 'awake').map((r) => r.id));
+  const before = fingerprint();
+  const res = await syncOnce().catch(() => null);
+  if (!res) return;
+  if (res.waking || online.waking) watchWake(asleep, before);
+  else afterSync(asleep, before);
 }
 
 async function offlineReady() {
@@ -296,7 +358,7 @@ views.rock = async (id) => {
     <img class="hero" src="${esc(photoSrc(r))}" alt="">
     <section class="panel">
       <p class="muted">${esc(r.spot || '')} · adopted ${fmtDate(r.adopted_at)}${r.voice ? ` · voice ${esc(r.voice)}` : ''}</p>
-      ${r.status !== 'awake' ? `<p>💤 Still asleep. Rocks take a night to think. Sync at home tonight; the laptop wakes it overnight.</p>` : `
+      ${r.status !== 'awake' ? `<p>💤 Still asleep. It wakes up a couple of minutes after your phone can reach the laptop.</p>` : `
         <p><b>Temperament:</b> ${esc(p?.temperament)}</p>
         <p><b>Grudge:</b> ${esc(p?.grudge)}</p>
         <p><b>Secretly likes:</b> ${esc(p?.secret_like)}</p>
@@ -359,9 +421,10 @@ views.adopt = async () => {
         status: 'sleeping', unlocked: [], chapters: [], nags: [], synced: false,
       };
       await store.put('rocks', rock);
-      status('Adopted. It is asleep 💤. It will wake up tonight when you sync at home.');
+      status('Adopted. It is asleep 💤. It wakes up as soon as your phone can reach the laptop.');
       const here = current;
       setTimeout(() => current === here && show('rock', rock.id), 1200);  // unless they've moved on
+      autoSync();  // so the laptop starts thinking right away
     } catch (e) {
       status(`Couldn't adopt: ${e.message}. Is the vision model downloaded? (Home tab)`);
       $('#save').disabled = false;
@@ -388,6 +451,7 @@ views.visit = async () => {
       const blob = await downscale(file, 768);
       const [emb, fix] = await Promise.all([embed(blob), fixP]);
       await handleVisit(match(emb, fix), emb, blob, result);
+      autoSync();
     } catch (e) {
       result.innerHTML = `<div class="panel bad"><p>Something broke: ${esc(e.message)}</p></div>`;
     }
@@ -452,7 +516,7 @@ views.inbox = async () => {
         <p class="speech">${esc(n.text)}</p>
         ${n.audio_url ? `<button class="btn small" data-play="${esc(n.audio_url)}">▶</button>` : ''}</div>`;
     }).join('')}
-    ${sleeping.length ? `<p class="muted">💤 ${sleeping.length} rock${sleeping.length > 1 ? 's are' : ' is'} asleep until you sync at home.</p>` : ''}
+    ${sleeping.length ? `<p class="muted">💤 ${sleeping.length} rock${sleeping.length > 1 ? 's are' : ' is'} asleep until your phone reaches the laptop.</p>` : ''}
     ${!lonely.length && rocks.length ? '<div class="empty"><p>Everyone is content.</p><p class="muted">Suspicious.</p></div>' : ''}
     ${!rocks.length ? '<div class="empty"><p class="muted">No rocks, no guilt. Yet.</p></div>' : ''}`;
 };
@@ -508,12 +572,12 @@ views.home = async () => {
     log.hidden = false;
     log.textContent = s.log.join('\n') || 'starting...';
     if (s.running) setTimeout(pollWake, 2000);
-    else if (current.view === 'home') { await sync().catch(() => {}); log.textContent += '\nsynced.'; }
+    else if (current.view === 'home') { await syncOnce().catch(() => {}); log.textContent += '\nsynced.'; }
   }
   $('#sync').onclick = async (e) => {
     e.target.disabled = true;
     try {
-      const r = await sync();
+      const r = await syncOnce();
       e.target.textContent = `⇅ Synced: sent ${r.sent}, ${r.rocks} rocks, ${r.cached} new voice files`;
     } catch (err) { e.target.textContent = `Sync failed: ${err.message}`; }
     e.target.disabled = false;
@@ -521,7 +585,7 @@ views.home = async () => {
   $('#wake').onclick = async () => {
     log.hidden = false;
     try {
-      await sync();  // the laptop needs the new rocks before it can wake them
+      await syncOnce();  // the laptop needs the new rocks before it can wake them
       await fetch(`/api/wake?mock=${$('#mock').checked}`, { method: 'POST' });
       pollWake();
     } catch (err) { log.textContent = `Couldn't start: ${err.message}`; }
@@ -580,5 +644,8 @@ views.calibrate = async () => {
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
 setInterval(() => { if (current.view === 'home' && $('#screen')) store.getMeta('walk').then((w) => w && ($('#screen').textContent = Math.round(walkSeconds(w)))); }, 1000);
 await loadState();
-checkOnline();
 show('rocks');
+autoSync();
+setInterval(autoSync, 20000);
+window.addEventListener('online', autoSync);
+document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && autoSync());

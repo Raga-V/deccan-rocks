@@ -15,10 +15,12 @@ import threading
 import time
 
 from . import db, gemma, prompts, voice
-from .config import CHAPTER_BATCH, CHAPTER_LOW_WATER, GEMMA_MODEL, MEDIA_DIR, NAG_TIERS
+from .config import CHAPTER_BATCH, CHAPTER_LOW_WATER, GEMMA_MODEL, MEDIA_DIR, MOCK_BRAIN, NAG_TIERS
 
 _lock = threading.Lock()
-status = {"running": False, "started_at": None, "finished_at": None, "log": []}
+status = {"running": False, "started_at": None, "finished_at": None, "log": [], "sleeping": 0}
+_failed_at: dict[str, float] = {}  # rock id -> when Gemma last gave up on it
+RETRY_AFTER_S = 30 * 60  # the phone syncs every 20 s; don't hammer a rock Gemma keeps failing on
 
 
 def log(msg: str):
@@ -212,15 +214,21 @@ def run(mock: bool = False) -> bool:
             awake = [r["id"] for r in c.execute("SELECT id FROM rocks WHERE status='awake' ORDER BY adopted_at")]
         if not sleeping and not awake:
             log("No rocks adopted yet. Go outside.")
+        status["sleeping"] = len(sleeping)
         for rid in sleeping:
             try:
                 wake_rock(rid, mock)
+                _failed_at.pop(rid, None)
             except Exception as e:  # one grumpy rock shouldn't block the rest
+                _failed_at[rid] = time.time()
                 log(f"  failed to wake {rid[:8]}: {e!r}")
+            status["sleeping"] -= 1
         for rid in awake:
             try:
                 top_up_rock(rid, mock)
+                _failed_at.pop(rid, None)
             except Exception as e:
+                _failed_at[rid] = time.time()
                 log(f"  failed to top up {rid[:8]}: {e!r}")
         backfill_audio()
         log("done. The rocks are thinking.")
@@ -228,6 +236,26 @@ def run(mock: bool = False) -> bool:
     finally:
         status.update(running=False, finished_at=now())
         _lock.release()
+
+
+def has_work() -> bool:
+    """A rock is asleep, or about to run out of chapters (and Gemma hasn't just failed on it)."""
+    with db.tx() as c:
+        rows = c.execute(
+            "SELECT r.id, r.status, (SELECT COUNT(*) FROM chapters ch WHERE ch.rock_id=r.id AND ch.unlocked_at IS NULL) AS locked"
+            " FROM rocks r"
+        ).fetchall()
+    recent = lambda rid: time.time() - _failed_at.get(rid, 0) < RETRY_AFTER_S
+    return any((r["status"] == "sleeping" or r["locked"] < CHAPTER_LOW_WATER) and not recent(r["id"]) for r in rows)
+
+
+def start(mock: bool = MOCK_BRAIN) -> bool:
+    """Run the job in the background. False if one is already running."""
+    if status["running"]:
+        return False
+    status["running"] = True  # claim it now, so two syncs a second apart don't both start a run
+    threading.Thread(target=run, kwargs={"mock": mock}, daemon=True).start()
+    return True
 
 
 def rewake(rock_id: str):
